@@ -1,5 +1,6 @@
 import Data.List (sort, (\\))
 import Text.Read (readMaybe) -- used in Assignment 4
+import Distribution.Compat.CharParsing (CharParsing(string))
 
 ------------------------- Merge sort
 
@@ -53,6 +54,7 @@ union :: Eq a => [a] -> [a] -> [a]
 union as bs = as ++ [ x | x <- bs, x `notElem` as ]
 
 add :: Party -> Event
+add cs Over = Over
 add cs (Game m n p ps) = Game m n (sort (p `union` cs)) ps
 
 addAt :: Node -> Party -> Event
@@ -74,6 +76,7 @@ removeAt x cs (Game m n p ps) = Game m n p newPs
     modified = sort ( (ps !! x) \\ cs )
 
 removeHere :: Party -> Event
+removeHere cs Over = Over
 removeHere cs (Game m n p ps) = removeAt n cs (Game m n p ps)
 
 ------------------------- Assignment 2: Dialogues
@@ -103,10 +106,40 @@ testDialogue = Branch ( isAtZero )
     isAtZero (Game _ n _ _) = n == 0
 
 dialogue :: Game -> Dialogue -> IO Game
-dialogue = undefined
+dialogue g (Action str event) = do
+    putStrLn str
+    return (event g)
+
+dialogue g (Branch cond d1 d2)
+    | cond g    = dialogue g d1
+    | otherwise = dialogue g d2
+
+dialogue g (Choice str options) = do
+    putStrLn str
+    if null options
+        then return g
+        else do
+            putStrLn (formatOptions options 1)
+            putStr prompt
+            input <- getLine
+            handleInput input
+  where
+    formatOptions [] _ = ""
+    formatOptions ((choiceStr, _):xs) i =
+        show i ++ " " ++ choiceStr ++ "\n" ++ formatOptions xs (i + 1)
+
+    handleInput input = case readMaybe input of
+        Just 0 -> return g
+        Just i | i > 0 && i  <= length options ->
+            dialogue g (snd (options !! (i - 1)))
+        _ -> do
+            putStrLn line6
+            dialogue g (Choice str options)
 
 findDialogue :: Party -> Dialogue
-findDialogue = undefined
+findDialogue p = case lookup p theDialogues of
+    Just d  -> d
+    Nothing -> Action line0 id
 
 ------------------------- Assignment 3: The game loop
 
