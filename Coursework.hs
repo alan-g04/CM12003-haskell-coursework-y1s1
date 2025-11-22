@@ -1,4 +1,5 @@
 import Data.List (sort, (\\))
+import Text.Read (readMaybe) -- used in Assignment 4
 
 ------------------------- Merge sort
 
@@ -16,7 +17,7 @@ msort [x] = [x]
 msort xs  = msort (take n xs) `merge` msort (drop n xs)
   where
     n = length xs `div` 2
-    
+
 ------------------------- Game world types
 
 type Character = String
@@ -28,60 +29,57 @@ type Map       = [(Node,Node)]
 
 data Game      = Over
                | Game Map Node Party [Party]
-  deriving (Eq,Show)
+                 deriving (Eq,Show)
 
 type Event     = Game -> Game
-
 
 testGame :: Node -> Game
 testGame i = Game [(0,1)] i ["Russell"] [[],["Brouwer","Heyting"]]
 
-
 ------------------------- Assignment 1: The game world
 
 connected :: Map -> Node -> [Node]
-connected [] _ = []
-connected ((x,y):xys) n
-    | n == x = y : connected xys n
-    | n == y = x : connected xys n
-    | otherwise = connected xys n
+connected m n = sort [ y | (x,y) <- m, x == n ] ++ sort [ x | (x,y) <- m, y == n ]
 
 connect :: Node -> Node -> Map -> Map
-connect x y xys
-    | isConnected x y = xys
-    | otherwise = (x,y):xys
-    where
-      isConnected x y = x `elem` connected xys y
+connect x y m
+    | x == y = m
+    | otherwise = sort ( (min x y, max x y) : m )
 
 disconnect :: Node -> Node -> Map -> Map
-disconnect x y = filter (\(n,m) -> sort [x,y] /= sort [n,m])
+disconnect x y m = [ (u,v) | (u,v) <- m, (u,v) /= (x,y), (u,v) /= (y,x) ]
+
+union :: Eq a => [a] -> [a] -> [a]
+union as bs = as ++ [ x | x <- bs, x `notElem` as ]
 
 add :: Party -> Event
-add [c] (Game m n p ps) = Game m n (c:p) ps
+add cs (Game m n p ps) = Game m n (sort (p `union` cs)) ps
 
 addAt :: Node -> Party -> Event
-addAt x [c] (Game m n p ps) = undefined
+addAt x cs (Game m n p ps) = Game m n p newPs
+  where
+    newPs    = take x ps ++ [modified] ++ drop (x + 1) ps
+    modified = sort ( (ps !! x) `union` cs )
 
 addHere :: Party -> Event
-addHere cs (Game m n p ps) = undefined
---Game m n p (map (++ cs) (filter (n == ((zip [0..] ps) !! 1)) ps))
+addHere cs (Game m n p ps) = addAt n cs (Game m n p ps)
 
 remove :: Party -> Event
 remove cs (Game m n p ps) = Game m n (p \\ cs) ps
 
 removeAt :: Node -> Party -> Event
-removeAt x [c] (Game m n p ps) = undefined
---Game m n p (ps \\ ((ps !! x) \\ [c]))
+removeAt x cs (Game m n p ps) = Game m n p newPs
+  where
+    newPs    = take x ps ++ [modified] ++ drop (x + 1) ps
+    modified = sort ( (ps !! x) \\ cs )
 
 removeHere :: Party -> Event
-removeHere cs = undefined
-
+removeHere cs (Game m n p ps) = removeAt n cs (Game m n p ps)
 
 ------------------------- Assignment 2: Dialogues
 
 prompt = ">>"
 line0  = "There is nothing we can do."
-
 
 data Dialogue = Action  String  Event
               | Branch  (Game -> Bool) Dialogue Dialogue
@@ -89,28 +87,26 @@ data Dialogue = Action  String  Event
 
 testDialogue :: Dialogue
 testDialogue = Branch ( isAtZero )
-  (Choice "Russell: Let's get our team together and head to Error." [])
-  (Choice "Brouwer: How can I help you?"
-    [ ("Could I get a haircut?", Choice "Brouwer: Of course." [])
-    , ("Could I get a pint?",    Choice "Brouwer: Of course. Which would you like?"
-      [ ("The Segmalt.",     Action "" id)
-      , ("The Null Pinter.", Action "" id)]
-      )
-    , ("Will you join us on a dangerous adventure?", Action "Brouwer: Of course." (add ["Brouwer"] . removeHere ["Brouwer"]))
-    ]
-  )
- where
-  isAtZero Over           = False
-  isAtZero (Game _ n _ _) = n == 0
-
+    (Choice "Russell: Let's get our team together and head to Error." [])
+    (Choice "Brouwer: How can I help you?"
+        [ ("Could I get a haircut?", Choice "Brouwer: Of course." [])
+        , ("Could I get a pint?",    Choice "Brouwer: Of course. Which would you like?"
+            [ ("The Segmalt.",     Action "" id)
+            , ("The Null Pinter.", Action "" id)
+            ]
+        )
+        , ("Will you join us on a dangerous adventure?", Action "Brouwer: Of course." (add ["Brouwer"] . removeHere ["Brouwer"]))
+        ]
+    )
+  where
+    isAtZero Over           = False
+    isAtZero (Game _ n _ _) = n == 0
 
 dialogue :: Game -> Dialogue -> IO Game
 dialogue = undefined
 
 findDialogue :: Party -> Dialogue
 findDialogue = undefined
-
-
 
 ------------------------- Assignment 3: The game loop
 
@@ -120,27 +116,24 @@ line3 = "With you are:"
 line4 = "You can see:"
 line5 = "What will you do?"
 
-
 step :: Game -> IO Game
 step = undefined
 
 game :: IO ()
 game = undefined
 
-
 ------------------------- Assignment 4: Safety upgrades
 
 line6 = "[Unrecognized input]"
 
-
 ------------------------- Assignment 5: Solving the game
 
 data Command  = Travel [Int] | Select Party | Talk [Int]
-  deriving Show
+              deriving Show
 
 type Solution = [Command]
 
-talk ::Game -> Dialogue -> [(Game,[Int])]
+talk :: Game -> Dialogue -> [(Game,[Int])]
 talk = undefined
 
 select :: Game -> [Party]
@@ -164,7 +157,6 @@ walkthrough = (putStrLn . unlines . filter (not . null) . map format . solve) st
     format (Talk   []) = ""
     format (Talk   xs) = "Talk:   " ++ unwords (map show xs)
 
-
 ------------------------- Game data
 
 start :: Game
@@ -175,61 +167,61 @@ theMap = [(1,2),(1,6),(2,4)]
 
 theLocations :: [Location]
 theLocations =
-  [ "Home"           -- 0
-  , "Brewpub"        -- 1
-  , "Hotel"          -- 2
-  , "Hotel room n+1" -- 3
-  , "Temple"         -- 4
-  , "Back of temple" -- 5
-  , "Takeaway"       -- 6
-  , "The I-50"       -- 7
-  ]
+    [ "Home"           -- 0
+    , "Brewpub"        -- 1
+    , "Hotel"          -- 2
+    , "Hotel room n+1" -- 3
+    , "Temple"         -- 4
+    , "Back of temple" -- 5
+    , "Takeaway"       -- 6
+    , "The I-50"       -- 7
+    ]
 
 theDescriptions :: [String]
 theDescriptions =
-  [ "your own home. It is very cosy."
-  , "the `Non Tertium Non Datur' Brewpub & Barber's."
-  , "the famous Logicester Hilbert Hotel & Resort."
-  , "front of Room n+1 in the Hilbert Hotel & Resort. You knock."
-  , "the Temple of Linearity, Logicester's most famous landmark, designed by Le Computier."
-  , "the back yard of the temple. You see nothing but a giant pile of waste paper."
-  , "Curry's Indian Takeaway, on the outskirts of Logicester."
-  , "a car on the I-50 between Logicester and Computerborough. The road is blocked by a large, threatening mob."
-  ]
+    [ "your own home. It is very cosy."
+    , "the `Non Tertium Non Datur' Brewpub & Barber's."
+    , "the famous Logicester Hilbert Hotel & Resort."
+    , "front of Room n+1 in the Hilbert Hotel & Resort. You knock."
+    , "the Temple of Linearity, Logicester's most famous landmark, designed by Le Computier."
+    , "the back yard of the temple. You see nothing but a giant pile of waste paper."
+    , "Curry's Indian Takeaway, on the outskirts of Logicester."
+    , "a car on the I-50 between Logicester and Computerborough. The road is blocked by a large, threatening mob."
+    ]
 
 theCharacters :: [Party]
 theCharacters =
-  [ ["Bertrand Russell"]                    -- 0  Home
-  , ["Arend Heyting", "Luitzen Brouwer"]    -- 1  Brewpub
-  , ["David Hilbert"]                       -- 2  Hotel
-  , ["William Howard"]                      -- 3  Hotel room n+1
-  , ["Jean-Yves Girard"]                    -- 4  Temple
-  , []                                      -- 5  Back of temple
-  , ["Haskell Curry", "Jean-Louis Krivine"] -- 6  Curry's takeaway
-  , ["Gottlob Frege"]                       -- 7  I-50
-  ]
+    [ ["Bertrand Russell"]                    -- 0  Home
+    , ["Arend Heyting", "Luitzen Brouwer"]    -- 1  Brewpub
+    , ["David Hilbert"]                       -- 2  Hotel
+    , ["William Howard"]                      -- 3  Hotel room n+1
+    , ["Jean-Yves Girard"]                    -- 4  Temple
+    , []                                      -- 5  Back of temple
+    , ["Haskell Curry", "Jean-Louis Krivine"] -- 6  Curry's takeaway
+    , ["Gottlob Frege"]                       -- 7  I-50
+    ]
 
 theDialogues :: [(Party,Dialogue)]
 theDialogues = let
-  always _ = True
-  end str  = Choice str []
-  
-  isconn  _ _  Over           = False
-  isconn  i j (Game m _ _ _ ) = elem i (connected m j)
+    always _ = True
+    end str  = Choice str []
 
-  here         Over           = 0
-  here        (Game _ n _ _ ) = n
+    isconn  _ _  Over           = False
+    isconn  i j (Game m _ _ _ ) = elem i (connected m j)
 
-  inParty   _  Over           = False
-  inParty   c (Game _ _ p _ ) = elem c p
+    here         Over           = 0
+    here        (Game _ n _ _ ) = n
 
-  isAt    _ _  Over           = False
-  isAt    n c (Game _ _ _ ps) = elem c (ps !! n)
+    inParty   _  Over           = False
+    inParty   c (Game _ _ p _ ) = elem c p
 
-  updateMap _  Over           = Over
-  updateMap f (Game m n p ps) = Game (f m) n p ps
+    isAt    _ _  Over           = False
+    isAt    n c (Game _ _ _ ps) = elem c (ps !! n)
 
- in
+    updateMap _  Over           = Over
+    updateMap f (Game m n p ps) = Game (f m) n p ps
+
+  in
   [ ( ["Russell"] , Choice "Russell: Let's go on an adventure!"
       [ ("Sure." , end "You pack your bags and go with Russell.")
       , ("Maybe later.", end "Russell looks disappointed.")
@@ -320,4 +312,3 @@ theDialogues = let
   , ( ["Bertrand Russell","Haskell Curry","Luitzen Brouwer"] , Branch ((==7).here) (end "Road trip! Road trip! Road trip!") (end "Let's head for Error!")
     )
   ]
-
