@@ -1,8 +1,7 @@
-import Data.List (sort, (\\))
+import Data.List (sort, (\\), nub)
 import Text.Read (readMaybe) -- used in Assignment 4
-import Distribution.Compat.CharParsing (CharParsing(string))
 
-------------------------- Merge sort
+-- Merge sort
 
 merge :: Ord a => [a] -> [a] -> [a]
 merge xs [] = xs
@@ -19,7 +18,7 @@ msort xs  = msort (take n xs) `merge` msort (drop n xs)
   where
     n = length xs `div` 2
 
-------------------------- Game world types
+-- Game world types
 
 type Character = String
 type Party     = [Character]
@@ -37,7 +36,7 @@ type Event     = Game -> Game
 testGame :: Node -> Game
 testGame i = Game [(0,1)] i ["Russell"] [[],["Brouwer","Heyting"]]
 
-------------------------- Assignment 1: The game world
+-- Assignment 1: The game world
 
 connected :: Map -> Node -> [Node]
 connected m n = sort [ y | (x,y) <- m, x == n ] ++ sort [ x | (x,y) <- m, y == n ]
@@ -79,7 +78,7 @@ removeHere :: Party -> Event
 removeHere cs Over = Over
 removeHere cs (Game m n p ps) = removeAt n cs (Game m n p ps)
 
-------------------------- Assignment 2: Dialogues
+-- Assignment 2: Dialogues
 
 prompt = ">>"
 line0  = "There is nothing we can do."
@@ -141,7 +140,7 @@ findDialogue p = case lookup p theDialogues of
     Just d  -> d
     Nothing -> Action line0 id
 
-------------------------- Assignment 3: The game loop
+-- Assignment 3: The game loop
 
 line1 = "You are in "
 line2 = "You can travel to:"
@@ -150,16 +149,77 @@ line4 = "You can see:"
 line5 = "What will you do?"
 
 step :: Game -> IO Game
-step = undefined
+step g@(Game m n p ps) = do
+
+    putStrLn (line1 ++ (theDescriptions !! n))
+    
+    putStrLn line2
+    putStrLn (unlines [ show i ++ " " ++ (theLocations !! target) 
+                      | (i, target) <- zip [1..] visibleNodes ])
+
+    putStrLn line3
+    putStrLn (unlines [ show i ++ " " ++ char 
+                      | (i, char) <- zip [offset..] p ])
+
+    putStrLn line4
+    putStrLn (unlines [ show i ++ " " ++ char 
+                      | (i, char) <- zip [offset + length p ..] (ps !! n) ])
+
+    putStrLn line5
+    putStr prompt
+    
+    input <- getLine
+    processInput input
+
+  where
+    visibleNodes = connected m n
+    offset       = length visibleNodes + 1
+    partyHere    = ps !! n
+    
+    -- Helper to determine party selection from indices
+    -- Combines current party (p) and party at location (partyHere)
+    allChars     = p ++ partyHere
+    
+    getCharByIndex i 
+        | i >= offset && i < offset + length allChars = Just (allChars !! (i - offset))
+        | otherwise = Nothing
+
+    processInput str = case mapM readMaybe (words str) of
+        -- Check for exit command
+        Just xs | 0 `elem` xs -> return Over
+        
+        -- Case: Moving
+        Just [i] | i > 0 && i <= length visibleNodes -> 
+            return (Game m (visibleNodes !! (i - 1)) p ps)
+            
+        -- Case: Talking
+        Just is -> case mapM getCharByIndex is of
+            Just chars -> do
+                -- Run `dialogue` and return the result
+                newGame <- dialogue g (findDialogue (sort (nub chars)))
+                return newGame
+            Nothing -> retry -- Invalid character indices
+            
+        -- Invalid Input
+        Nothing -> retry
+        
+    retry = do
+        putStrLn line6
+        step g
 
 game :: IO ()
-game = undefined
+game = loop start
+  where
+    loop Over = return ()
+    loop g    = do
+        g' <- step g
+        loop g'
 
-------------------------- Assignment 4: Safety upgrades
+-- Assignment 4: Safety upgrades
 
 line6 = "[Unrecognized input]"
 
-------------------------- Assignment 5: Solving the game
+-- Assignment 5: Solving the game
 
 data Command  = Travel [Int] | Select Party | Talk [Int]
               deriving Show
@@ -190,7 +250,7 @@ walkthrough = (putStrLn . unlines . filter (not . null) . map format . solve) st
     format (Talk   []) = ""
     format (Talk   xs) = "Talk:   " ++ unwords (map show xs)
 
-------------------------- Game data
+-- Game data
 
 start :: Game
 start = Game theMap 0 [] theCharacters
