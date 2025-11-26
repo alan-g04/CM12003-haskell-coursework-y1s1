@@ -1,22 +1,5 @@
-import Data.List (sort, (\\), nub)
-import Text.Read (readMaybe) -- used in Assignment 4
-
--- Merge sort
-
-merge :: Ord a => [a] -> [a] -> [a]
-merge xs [] = xs
-merge [] ys = ys
-merge (x:xs) (y:ys)
-    | x <  y    = x : merge    xs (y:ys)
-    | x == y    = x : merge    xs    ys
-    | otherwise = y : merge (x:xs)   ys
-
-msort :: Ord a => [a] -> [a]
-msort []  = []
-msort [x] = [x]
-msort xs  = msort (take n xs) `merge` msort (drop n xs)
-  where
-    n = length xs `div` 2
+import Data.List (sort, (\\), nub, subsequences, elemIndex)
+import Text.Read (readMaybe)
 
 -- Game world types
 
@@ -88,7 +71,7 @@ data Dialogue = Action  String  Event
               | Choice  String  [( String , Dialogue )]
 
 testDialogue :: Dialogue
-testDialogue = Branch ( isAtZero )
+testDialogue = Branch isAtZero
     (Choice "Russell: Let's get our team together and head to Error." [])
     (Choice "Brouwer: How can I help you?"
         [ ("Could I get a haircut?", Choice "Brouwer: Of course." [])
@@ -175,9 +158,6 @@ step g@(Game m n p ps) = do
     visibleNodes = connected m n
     offset       = length visibleNodes + 1
     partyHere    = ps !! n
-    
-    -- Helper to determine party selection from indices
-    -- Combines current party (p) and party at location (partyHere)
     allChars     = p ++ partyHere
     
     getCharByIndex i 
@@ -185,17 +165,16 @@ step g@(Game m n p ps) = do
         | otherwise = Nothing
 
     processInput str = case mapM readMaybe (words str) of
-        -- Check for exit command
+        -- Exit?
         Just xs | 0 `elem` xs -> return Over
         
-        -- Case: Moving
+        -- Moving
         Just [i] | i > 0 && i <= length visibleNodes -> 
             return (Game m (visibleNodes !! (i - 1)) p ps)
             
-        -- Case: Talking
+        -- Talking
         Just is -> case mapM getCharByIndex is of
             Just chars -> do
-                -- Run `dialogue` and return the result
                 newGame <- dialogue g (findDialogue (sort (nub chars)))
                 return newGame
             Nothing -> retry -- Invalid character indices
@@ -227,19 +206,67 @@ data Command  = Travel [Int] | Select Party | Talk [Int]
 type Solution = [Command]
 
 talk :: Game -> Dialogue -> [(Game,[Int])]
-talk = undefined
+talk g (Action _ event) = [(event g, [])]
+talk g (Branch cond d1 d2)
+    | cond g    = talk g d1
+    | otherwise = talk g d2
+talk g (Choice _ options) = 
+    [ (finalGame, i : path) 
+    | (i, (_, d)) <- zip [1..] options
+    , (finalGame, path) <- talk g d 
+    ]
 
 select :: Game -> [Party]
-select = undefined
+select (Game _ n p ps) = filter (not . null) (subsequences visibleChars)
+  where
+    visibleChars = sort (p ++ (ps !! n))
 
 travel :: Map -> Node -> [(Node,[Int])]
-travel = undefined
+travel m startNode = bfs [(startNode, [])] [startNode]
+  where
+    bfs [] _ = []
+    bfs ((curr, path):queue) visited = 
+        (curr, path) : bfs (queue ++ nextSteps) (visited ++ newNodes)
+      where
+        neighbors = connected m curr
+        
+        nextSteps = [ (next, path ++ [i]) 
+                    | (i, next) <- zip [1..] neighbors
+                    , next `notElem` visited 
+                    ]
+        
+        newNodes = map fst nextSteps
 
-allSteps :: Game -> [(Solution,Game)]
-allSteps = undefined
+allSteps :: Game -> [(Solution, Game)]
+allSteps g@(Game m n _ _) = travelSteps ++ talkSteps
+  where
+    travelSteps = [ ([Travel path], Game m dest p ps)
+                  | (dest, path) <- travel m n 
+                  , not (null path) -- Empty path
+                  , let (Game _ _ p ps) = g 
+                  ]
+
+    talkSteps = [ ([Select party, Talk path], finalGame)
+                | party <- select g
+                , let d = findDialogue party
+                , (finalGame, path) <- talk g d
+                ]
 
 solve :: Game -> Solution
-solve = undefined
+solve initialGame = search [[(initialGame, [])]] []
+  where
+    -- BFS: Queue of paths, List of visited Game states
+    search [] _ = [] -- No solution
+    search (path : paths) visitedGames
+        | currentGame == Over = reverse currentSol
+        | currentGame `elem` visitedGames = search paths visitedGames
+        | otherwise = search (paths ++ newPaths) (currentGame : visitedGames)
+      where
+        (currentGame, currentSol) = head path
+        
+        newPaths = [ (nextGame, steps ++ currentSol) : path 
+                   | (steps, nextGame) <- allSteps currentGame 
+                   ]
 
 walkthrough :: IO ()
 walkthrough = (putStrLn . unlines . filter (not . null) . map format . solve) start
