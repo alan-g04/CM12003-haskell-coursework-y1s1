@@ -1,4 +1,4 @@
-import Data.List (sort, (\\), nub, subsequences, elemIndex)
+import Data.List (sort, (\\), nub, subsequences)
 import Text.Read (readMaybe)
 
 -- Game world types
@@ -133,6 +133,7 @@ line2 = "You can travel to:"
 line3 = "With you are:"
 line4 = "You can see:"
 line5 = "What will you do?"
+line6 = "[Unrecognized input]" -- Assignment 4: Safety upgrades
 
 step :: Game -> IO Game
 step g@(Game m n p ps) = do
@@ -195,10 +196,6 @@ game = loop start
     loop g    = do
         g' <- step g
         loop g'
-
--- Assignment 4: Safety upgrades
-
-line6 = "[Unrecognized input]"
 
 -- Assignment 5: Solving the game
 
