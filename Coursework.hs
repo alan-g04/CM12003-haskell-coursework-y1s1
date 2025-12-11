@@ -22,7 +22,7 @@ testGame i = Game [(0,1)] i ["Russell"] [[],["Brouwer","Heyting"]]
 -- Assignment 1: The game world
 
 connected :: Map -> Node -> [Node]
-connected m n = sort [ y | (x,y) <- m, x == n ] ++ sort [ x | (x,y) <- m, y == n ]
+connected m n = sort ([ y | (x,y) <- m, x == n ] ++ [ x | (x,y) <- m, y == n ])
 
 connect :: Node -> Node -> Map -> Map
 connect x y m
@@ -40,6 +40,7 @@ add cs Over = Over
 add cs (Game m n p ps) = Game m n (sort (p `union` cs)) ps
 
 addAt :: Node -> Party -> Event
+addAt x cs Over = Over
 addAt x cs (Game m n p ps) = Game m n p newPs
   where
     newPs    = take x ps ++ [modified] ++ drop (x + 1) ps
@@ -49,9 +50,11 @@ addHere :: Party -> Event
 addHere cs (Game m n p ps) = addAt n cs (Game m n p ps)
 
 remove :: Party -> Event
+remove cs Over = Over
 remove cs (Game m n p ps) = Game m n (p \\ cs) ps
 
 removeAt :: Node -> Party -> Event
+removeAt x cs Over = Over
 removeAt x cs (Game m n p ps) = Game m n p newPs
   where
     newPs    = take x ps ++ [modified] ++ drop (x + 1) ps
@@ -135,22 +138,22 @@ step :: Game -> IO Game
 step g@(Game m n p ps) = do
 
     putStrLn (line1 ++ (theDescriptions !! n))
-    
+
     putStrLn line2
-    putStrLn (unlines [ show i ++ " " ++ (theLocations !! target) 
+    putStrLn (unlines [ show i ++ " " ++ (theLocations !! target)
                       | (i, target) <- zip [1..] visibleNodes ])
 
     putStrLn line3
-    putStrLn (unlines [ show i ++ " " ++ char 
+    putStrLn (unlines [ show i ++ " " ++ char
                       | (i, char) <- zip [offset..] p ])
 
     putStrLn line4
-    putStrLn (unlines [ show i ++ " " ++ char 
+    putStrLn (unlines [ show i ++ " " ++ char
                       | (i, char) <- zip [offset + length p ..] (ps !! n) ])
 
     putStrLn line5
     putStr prompt
-    
+
     input <- getLine
     processInput input
 
@@ -159,29 +162,28 @@ step g@(Game m n p ps) = do
     offset       = length visibleNodes + 1
     partyHere    = ps !! n
     allChars     = p ++ partyHere
-    
-    getCharByIndex i 
+
+    getCharByIndex i
         | i >= offset && i < offset + length allChars = Just (allChars !! (i - offset))
         | otherwise = Nothing
 
     processInput str = case mapM readMaybe (words str) of
         -- Exit?
         Just xs | 0 `elem` xs -> return Over
-        
+
         -- Moving
-        Just [i] | i > 0 && i <= length visibleNodes -> 
+        Just [i] | i > 0 && i <= length visibleNodes ->
             return (Game m (visibleNodes !! (i - 1)) p ps)
-            
+
         -- Talking
         Just is -> case mapM getCharByIndex is of
             Just chars -> do
-                newGame <- dialogue g (findDialogue (sort (nub chars)))
-                return newGame
+                dialogue g (findDialogue (sort (nub chars)))
             Nothing -> retry -- Invalid character indices
-            
+
         -- Invalid Input
         Nothing -> retry
-        
+
     retry = do
         putStrLn line6
         step g
@@ -210,10 +212,10 @@ talk g (Action _ event) = [(event g, [])]
 talk g (Branch cond d1 d2)
     | cond g    = talk g d1
     | otherwise = talk g d2
-talk g (Choice _ options) = 
-    [ (finalGame, i : path) 
+talk g (Choice _ options) =
+    [ (finalGame, i : path)
     | (i, (_, d)) <- zip [1..] options
-    , (finalGame, path) <- talk g d 
+    , (finalGame, path) <- talk g d
     ]
 
 select :: Game -> [Party]
@@ -225,28 +227,28 @@ travel :: Map -> Node -> [(Node,[Int])]
 travel m startNode = bfs [(startNode, [])] [startNode]
   where
     bfs [] _ = []
-    bfs ((curr, path):queue) visited = 
+    bfs ((curr, path):queue) visited =
         (curr, path) : bfs (queue ++ nextSteps) (visited ++ newNodes)
       where
         neighbors = connected m curr
-        
-        nextSteps = [ (next, path ++ [i]) 
+
+        nextSteps = [ (next, path ++ [i])
                     | (i, next) <- zip [1..] neighbors
-                    , next `notElem` visited 
+                    , next `notElem` visited
                     ]
-        
+
         newNodes = map fst nextSteps
 
 allSteps :: Game -> [(Solution, Game)]
 allSteps g@(Game m n _ _) = travelSteps ++ talkSteps
   where
     travelSteps = [ ([Travel path], Game m dest p ps)
-                  | (dest, path) <- travel m n 
+                  | (dest, path) <- travel m n
                   , not (null path) -- Empty path
-                  , let (Game _ _ p ps) = g 
+                  , let (Game _ _ p ps) = g
                   ]
 
-    talkSteps = [ ([Select party, Talk path], finalGame)
+    talkSteps = [ ([Talk path, Select party], finalGame)
                 | party <- select g
                 , let d = findDialogue party
                 , (finalGame, path) <- talk g d
@@ -263,9 +265,9 @@ solve initialGame = search [[(initialGame, [])]] []
         | otherwise = search (paths ++ newPaths) (currentGame : visitedGames)
       where
         (currentGame, currentSol) = head path
-        
-        newPaths = [ (nextGame, steps ++ currentSol) : path 
-                   | (steps, nextGame) <- allSteps currentGame 
+
+        newPaths = [ (nextGame, steps ++ currentSol) : path
+                   | (steps, nextGame) <- allSteps currentGame
                    ]
 
 walkthrough :: IO ()
